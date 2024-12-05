@@ -1,137 +1,39 @@
 from django.db import models
-from django.contrib.auth.models import AbstractUser
+from django.dispatch import receiver
+from django.db.models.signals import post_save ,pre_save
 
-class CustomUser(AbstractUser):
-    ADMIN = 'admin'
-    CREATOR = 'creator'
-    DONOR = 'donor'
-    USER_TYPE_CHOICES = [
-        (ADMIN, 'Admin'),
-        (CREATOR, 'Creator'),
-        (DONOR, 'Donor'),
-    ]
-
-    user_type = models.CharField(
-        max_length=20,
-        choices=USER_TYPE_CHOICES,
-        default=DONOR,
-        help_text="Role of the user in the crowdfunding platform"
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self)->str:
-        return f"{self.username} ({self.get_user_type_display()})"
-
-class Campaign(models.Model):
-    creator = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='campaigns')
-    title = models.CharField(max_length=255)
-    description = models.TextField(null=True, blank=True)
-    goal_amount = models.DecimalField(max_digits=10, decimal_places=2)
-    current_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    deadline = models.DateField()
-    PENDING = 'pending'
-    APPROVED = 'approved'
-    REJECTED = 'rejected'
-    STATUS_CHOICES = [
-        (PENDING, 'Pending'),
-        (APPROVED, 'Approved'),
-        (REJECTED, 'Rejected'),
-    ]
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=PENDING)
-    created_at = models.DateTimeField(auto_now_add=True)
-    feedback = models.TextField(null=True, blank=True)
-
+from django.contrib.auth.models import User
+class Register(models.Model):
+    first_name = models.CharField(max_length = 30)
+    last_name = models.CharField(max_length = 30)
+    email = models.EmailField(max_length = 50 , unique=True)
+    password = models.CharField(max_length = 200)
+    phone = models.CharField(max_length = 11 , unique=True, null=True)
+    is_active = models.BooleanField(default=False)
+    is_superuser=models.BooleanField(default=False)
+    profile_img = models.ImageField(verbose_name="photo", upload_to='user/images/' ,default='default.jpg')
+    birthdate = models.DateField(null = True)
+    facebook_profile = models.URLField(null = True)
+    country = models.CharField(max_length = 30 , null = True)
+    last_login = models.DateTimeField(null=True)
     def __str__(self):
-        return self.title
+        fullName= f""+(self.first_name + " " +self.last_name) 
+        return fullName
+        
+    
+# @receiver(pre_save, sender=User)
+# def create_profile(sender, instance,*args, **kwargs):
+#         Register.objects.update( email=instance.email , password=instance.password , is_superuser=instance.is_superuser , is_active=instance.is_active ,first_name=instance.username)
 
-class Comment(models.Model):
-    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name='comments')
-    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='comments')
-    content = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
+@receiver(post_save, sender=User)
+def create_profile(sender, instance, created, **kwargs):
+    if created:
+        Register.objects.create( email=instance.email , password=instance.password , is_superuser=instance.is_superuser , is_active=instance.is_active ,first_name=instance.first_name , last_name=instance.last_name)
 
-    def __str__(self):
-        return f"Comment by {self.user.username} on {self.campaign.title}"
 
-class Donation(models.Model):
-    donor = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='donations')
-    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name='donations')
-    amount = models.DecimalField(max_digits=10, decimal_places=2)
-    ONE_TIME = 'one-time'
-    RECURRING = 'recurring'
-    DONATION_TYPE_CHOICES = [
-        (ONE_TIME, 'One-time'),
-        (RECURRING, 'Recurring'),
-    ]
-    donation_type = models.CharField(max_length=20, choices=DONATION_TYPE_CHOICES)
-    thank_you_message = models.TextField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"{self.donor.username} donated to {self.campaign.title}"
-
-class Transaction(models.Model):
-    donation = models.OneToOneField(Donation, on_delete=models.CASCADE, related_name='transaction')
-    payment_method = models.CharField(max_length=50)
-    transaction_date = models.DateTimeField(auto_now_add=True)
-    status = models.CharField(max_length=20, default='completed')
-
-    def __str__(self):
-        return f"Transaction for Donation ID: {self.donation.id}"
-
-class SocialMediaShare(models.Model):
-    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='shares')
-    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name='shares')
-    shared_at = models.DateTimeField(auto_now_add=True)
-    referral_reward = models.IntegerField(default=0)
-
-    def __str__(self):
-        return f"{self.user.username} shared {self.campaign.title}"
-
-class Reward(models.Model):
-    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='rewards')
-    points = models.IntegerField(default=0)
-    activity = models.CharField(max_length=50)
-    activity_date = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"{self.user.username} - {self.activity} ({self.points} points)"
-
-class AdminAction(models.Model):
-    admin = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='admin_actions')
-    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name='admin_actions')
-    APPROVE = 'approve'
-    REJECT = 'reject'
-    FLAG = 'flag'
-    ACTION_TYPE_CHOICES = [
-        (APPROVE, 'Approve'),
-        (REJECT, 'Reject'),
-        (FLAG, 'Flag'),
-    ]
-    action_type = models.CharField(max_length=50, choices=ACTION_TYPE_CHOICES)
-    feedback = models.TextField(null=True, blank=True)
-    action_date = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"{self.admin.username} {self.action_type} campaign {self.campaign.title}"
-
-class CampaignAccess(models.Model):
-    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='campaign_accesses')
-    SILVER = 'silver'
-    GOLD = 'gold'
-    ACCESS_LEVEL_CHOICES = [
-        (SILVER, 'Silver'),
-        (GOLD, 'Gold'),
-    ]
-    access_level = models.CharField(max_length=20, choices=ACCESS_LEVEL_CHOICES)
-    MONEY = 'money'
-    REWARD_POINTS = 'reward_points'
-    UNLOCKED_BY_CHOICES = [
-        (MONEY, 'Money'),
-        (REWARD_POINTS, 'Reward Points'),
-    ]
-    unlocked_by = models.CharField(max_length=20, choices=UNLOCKED_BY_CHOICES)
-    unlock_date = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"{self.user.username} - {self.access_level} access unlocked by {self.unlocked_by}"
+# @receiver(pre_save, sender=User)
+# def create_profile(sender, instance, **kwargs):
+#     if(sender.id==instance.id):
+#         Register.objects.update( id=instance.id,email=instance.email , password=instance.password , is_superuser=instance.is_superuser , is_active=instance.is_active ,first_name=instance.first_name , last_name=instance.last_name)
+#     else:
+#         Register.objects.create( id=instance.id,email=instance.email , password=instance.password , is_superuser=instance.is_superuser , is_active=instance.is_active ,first_name=instance.first_name , last_name=instance.last_name)
